@@ -4,10 +4,16 @@ import static org.hibernate.envers.tools.StringTools.capitalizeFirst;
 import static org.hibernate.envers.tools.StringTools.getLastComponent;
 
 import java.io.Serializable;
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import javassist.CannotCompileException;
 import javassist.ClassPool;
@@ -19,15 +25,21 @@ import javassist.CtNewConstructor;
 import javassist.NotFoundException;
 
 import org.hibernate.envers.entities.PropertyData;
+import org.hibernate.envers.internal.EnversMessageLogger;
 import org.hibernate.envers.tools.reflection.ReflectionTools;
 import org.hibernate.service.classloading.spi.ClassLoaderService;
 import org.hibernate.service.classloading.spi.ClassLoadingException;
+import org.jboss.logging.Logger;
 
 /**
  * @author Lukasz Zuchowski (author at zuchos dot com)
  * @author Felix Feisst (author at patronas dot de)
  */
 public class MapProxyTool {
+
+	public static final String SCHEMA_VERSION_PROPERTY = "org.hibernate.envers.tools.schema_version";
+
+	private static final EnversMessageLogger LOG = Logger.getMessageLogger( EnversMessageLogger.class, MapProxyTool.class.getName() );
 
 	/**
 	 * @param className Name of the class to construct (should be unique within class loader)
@@ -40,9 +52,9 @@ public class MapProxyTool {
 	 * passed as parameter.
 	 */
 	public static Object newInstanceOfBeanProxyForMap(String className, Map<String, Object> map, Set<PropertyData> propertyDatas,
-			ClassLoaderService classLoaderService) {
+			ClassLoaderService classLoaderService, Long schemaVersion) {
 		Map<String, Class<?>> properties = prepareProperties( propertyDatas );
-		return createNewInstance( map, classForName( className, properties, classLoaderService ) );
+		return createNewInstance( map, classForName( className, properties, classLoaderService, schemaVersion ) );
 	}
 
 	private static Object createNewInstance(Map<String, Object> map, Class aClass) {
@@ -72,6 +84,31 @@ public class MapProxyTool {
 
 	}
 
+	private static final Map<String, SchemaVersionMap> schemaVersionMap = new ConcurrentHashMap<String, SchemaVersionMap>();
+
+	private static class SchemaVersionMap {
+
+		private final ReadWriteLock lock = new ReentrantReadWriteLock();
+		private final SortedMap<Long, Class<?>> map = new TreeMap<Long, Class<?>>();
+	}
+
+	/**
+	 * Null-safe and thread-safe getter for the schema version map for the specified class name.
+	 */
+	private static SchemaVersionMap getSchemaVersionMap(final String className) {
+		SchemaVersionMap result = schemaVersionMap.get( className );
+		if ( result == null ) {
+			synchronized ( schemaVersionMap ) {
+				result = schemaVersionMap.get( className );
+				if ( result == null ) {
+					result = new SchemaVersionMap();
+					schemaVersionMap.put( className, result );
+				}
+			}
+		}
+		return result;
+	}
+
 	/**
 	 * Generates/loads proxy class for given name with properties for map.
 	 * 
@@ -80,12 +117,121 @@ public class MapProxyTool {
 	 * @param classLoaderService
 	 * @return proxy class that wraps map into java bean
 	 */
-	public static Class classForName(String className, Map<String, Class<?>> properties, ClassLoaderService classLoaderService) {
-		Class aClass = loadClass( className, classLoaderService );
-		if ( aClass == null ) {
-			aClass = generate( className, properties );
+	public static Class<?> classForName(String className, Map<String, Class<?>> properties, ClassLoaderService classLoaderService, Long schemaVersion) {
+		Class<?> result;
+		if ( schemaVersion == null ) {
+			LOG.debugf( "Resolve map proxy class %s (no schema version is set)", className );
+			result = loadClass( className, classLoaderService );
+			if ( result == null ) {
+				result = generate( className, properties );
+			}
 		}
-		return aClass;
+		else {
+			LOG.debugf( "Resolving map proxy class %s for schema version %s", className, schemaVersion );
+			result = classForNameForSchemaVersion( className, schemaVersion, properties );
+		}
+		return result;
+	}
+
+	/**
+	 * Loads a class according to the specified schema version.
+	 */
+	private static Class<?> classForNameForSchemaVersion(final String rawClassName, final Long schemaVersion, final Map<String, Class<?>> properties) {
+		SchemaVersionMap svm = getSchemaVersionMap( rawClassName );
+		svm.lock.readLock().lock();
+		try {
+			SortedMap<Long, Class<?>> map = svm.map;
+			Class<?> result = map.get( schemaVersion );
+			if ( result == null ) {
+				// lock upgrading is not possible
+				svm.lock.readLock().unlock();
+				svm.lock.writeLock().lock();
+				try {
+					result = map.get( schemaVersion );
+					if ( result == null ) {
+						LOG.debugf( "No map proxy class has been set for class name %s and schema version %s", rawClassName, schemaVersion );
+						result = resolveCompatibleClass( map, schemaVersion, properties );
+						if ( result == null ) {
+							final String className = rawClassName.concat( "Version" ).concat( String.valueOf( schemaVersion ) );
+							LOG.debugf( "Found no compatible class for class name %s and schema version %s. Generating new map proxy class with name %s",
+									rawClassName, schemaVersion, className );
+							result = generate( className, properties );
+						}
+						map.put( schemaVersion, result );
+					}
+				}
+				finally {
+					// lock downgrading is possible
+					svm.lock.readLock().lock();
+					svm.lock.writeLock().unlock();
+				}
+			}
+			return result;
+		}
+		finally {
+			svm.lock.readLock().unlock();
+		}
+	}
+
+	/**
+	 * Resolves a compatible class from the next lower or next higher schema version. If there is no such schema version
+	 * or the none of the two classes is compatible, <code>null</code> is returned.
+	 * <p>
+	 * Protected for testing only.
+	 */
+	protected static Class<?> resolveCompatibleClass(final SortedMap<Long, Class<?>> map, final long schemaVersion, final Map<String, Class<?>> properties) {
+		Class<?> result = null;
+		final SortedMap<Long, Class<?>> headMap = map.headMap( schemaVersion );
+		if ( !headMap.isEmpty() ) {
+			final Long smallerSchemaVersion = headMap.lastKey();
+			Class<?> candidate = headMap.get( smallerSchemaVersion );
+			if ( isCompatible( candidate, properties ) ) {
+				LOG.debugf( "Found compatible class in schema version %s", smallerSchemaVersion );
+				result = candidate;
+			}
+		}
+		if ( result == null ) {
+			final SortedMap<Long, Class<?>> tailMap = map.tailMap( schemaVersion );
+			if ( !tailMap.isEmpty() ) {
+				final Long greaterSchemaVersion = tailMap.firstKey();
+				Class<?> candidate = tailMap.get( greaterSchemaVersion );
+				if ( isCompatible( candidate, properties ) ) {
+					LOG.debugf( "Found compatible class in schema version %s", greaterSchemaVersion );
+					result = candidate;
+				}
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Checks whether the specified class is compatible with the specified properties.
+	 * <p>
+	 * Protected for testing only.
+	 */
+	protected static boolean isCompatible(final Class<?> clazz, final Map<String, Class<?>> properties) {
+		boolean result = true;
+		for ( Entry<String, Class<?>> entry : properties.entrySet() ) {
+			final String capitalizedProperty = capitalizeFirst( entry.getKey() );
+			final String getterName = "get".concat( capitalizedProperty );
+			final String setterName = "set".concat( capitalizedProperty );
+			try {
+				Method getter = clazz.getMethod( getterName );
+				result = getter.getReturnType().equals( entry.getValue() );
+				Method setter = clazz.getMethod( setterName, entry.getValue() );
+				result = result && setter.getReturnType().equals( void.class );
+			}
+			catch (NoSuchMethodException e) {
+				result = false;
+			}
+			catch (SecurityException e) {
+				result = false;
+			}
+			if ( !result ) {
+				break;
+			}
+		}
+		return result;
 	}
 
 	/**

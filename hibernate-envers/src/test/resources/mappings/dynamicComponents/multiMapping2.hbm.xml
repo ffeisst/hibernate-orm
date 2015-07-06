@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!DOCTYPE hibernate-mapping PUBLIC
+        "-//Hibernate/Hibernate Mapping DTD 3.0//EN"
+        "http://www.hibernate.org/dtd/hibernate-mapping-3.0.dtd">
+<hibernate-mapping default-lazy="false">
+    <class name="org.hibernate.envers.test.integration.components.dynamic.AuditedDynamicComponentEntity" table="Audited">
+        <id name="id" type="long" column="id"/>
+        <property name="note" type="string"/>
+        <dynamic-component name="customFields">
+            <property name="multiprop1" type="integer"/>
+            <property name="multiprop3" type="integer"/>
+        </dynamic-component>
+    </class>
+
+</hibernate-mapping>

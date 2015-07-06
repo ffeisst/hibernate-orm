@@ -23,7 +23,7 @@ public class MapProxyTest {
 		Map<String, Class<?>> properties = new HashMap<String, Class<?>>();
 		properties.put( "age", Integer.class );
 		// when
-		Class testClass = MapProxyTool.classForName( "TestClass1", properties, new ClassLoaderServiceImpl() );
+		Class testClass = MapProxyTool.classForName( "TestClass1", properties, new ClassLoaderServiceImpl(), null );
 		Object testClassInstance = testClass.getConstructor( Map.class ).newInstance( map );
 
 		// then
@@ -40,7 +40,7 @@ public class MapProxyTest {
 		properties.put( "age", Integer.class );
 
 		// when
-		Class testClass = MapProxyTool.classForName( "TestClass2", properties, new ClassLoaderServiceImpl() );
+		Class testClass = MapProxyTool.classForName( "TestClass2", properties, new ClassLoaderServiceImpl(), null );
 		Object testClassInstance = testClass.getConstructor( Map.class ).newInstance( map );
 
 		// then
@@ -60,7 +60,7 @@ public class MapProxyTest {
 		properties.put( "checkbox", Boolean.class );
 
 		// when
-		Class testClass = MapProxyTool.classForName( "TestClass3", properties, new ClassLoaderServiceImpl() );
+		Class testClass = MapProxyTool.classForName( "TestClass3", properties, new ClassLoaderServiceImpl(), null );
 		Object testClassInstance = testClass.getConstructor( Map.class ).newInstance( map );
 
 		// then

@@ -71,6 +71,7 @@ import org.hibernate.testing.OnFailure;
 import org.hibernate.testing.SkipLog;
 import org.hibernate.testing.cache.CachingRegionFactory;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.fail;
 
 /**
@@ -373,7 +374,7 @@ public abstract class BaseCoreFunctionalTestCase extends BaseUnitTestCase {
 
 	@AfterClassOnce
 	@SuppressWarnings( {"UnusedDeclaration"})
-	protected void releaseSessionFactory() {
+	private void releaseSessionFactory() {
 		if ( sessionFactory == null ) {
 			return;
 		}

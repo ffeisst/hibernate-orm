@@ -75,8 +75,10 @@ public class MultiDynamicComponentMapper extends MultiPropertyMapper {
 
 	@Override
 	public void mapToEntityFromMap(AuditConfiguration verCfg, Object obj, Map data, Object primaryKey, AuditReaderImplementor versionsReader, Number revision) {
+		String schemaVersionString = versionsReader.getSessionImplementor().getFactory().getProperties().getProperty( MapProxyTool.SCHEMA_VERSION_PROPERTY );
+		Long schemaVersion = StringTools.isEmpty( schemaVersionString ) ? null : Long.valueOf( schemaVersionString );
 		Object mapProxy = MapProxyTool.newInstanceOfBeanProxyForMap( generateClassName( data, dynamicComponentData.getBeanName() ), (Map) obj,
-				properties.keySet(), verCfg.getClassLoaderService() );
+				properties.keySet(), verCfg.getClassLoaderService(), schemaVersion );
 		for ( PropertyData propertyData : properties.keySet() ) {
 			PropertyMapper mapper = properties.get( propertyData );
 			mapper.mapToEntityFromMap( verCfg, mapProxy, data, primaryKey, versionsReader, revision );
