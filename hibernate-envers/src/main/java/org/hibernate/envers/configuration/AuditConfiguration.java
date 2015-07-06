@@ -48,8 +48,10 @@ import org.hibernate.service.classloading.spi.ClassLoaderService;
 /**
  * @author Adam Warski (adam at warski dot org)
  * @author Stephanie Pau at Markit Group Plc
+ * @author Felix Feisst (feisst at patronas dot de)
  */
 public class AuditConfiguration {
+
 	private final GlobalConfiguration globalCfg;
 	private final AuditEntitiesConfiguration auditEntCfg;
 	private final AuditProcessManager auditProcessManager;
@@ -92,6 +94,10 @@ public class AuditConfiguration {
 		return auditStrategy;
 	}
 
+	public ClassLoaderService getClassLoaderService() {
+		return classLoaderService;
+	}
+
 	public AuditConfiguration(Configuration cfg) {
 		this( cfg, null );
 	}
@@ -101,7 +107,7 @@ public class AuditConfiguration {
 		// hibernate-commons-annotations' for reflection and class loading.
 		ClassLoader tccl = Thread.currentThread().getContextClassLoader();
 		Thread.currentThread().setContextClassLoader( ClassLoaderHelper.getContextClassLoader() );
-		
+
 		Properties properties = cfg.getProperties();
 
 		ReflectionManager reflectionManager = cfg.getReflectionManager();
@@ -114,15 +120,10 @@ public class AuditConfiguration {
 		revisionInfoNumberReader = revInfoCfgResult.getRevisionInfoNumberReader();
 		modifiedEntityNamesReader = revInfoCfgResult.getModifiedEntityNamesReader();
 		this.classLoaderService = classLoaderService;
-		auditStrategy = initializeAuditStrategy(
-				revInfoCfgResult.getRevisionInfoClass(),
-				revInfoCfgResult.getRevisionInfoTimestampData()
-		);
-		entCfg = new EntitiesConfigurator().configure(
-				cfg, reflectionManager, globalCfg, auditEntCfg, auditStrategy,
-				revInfoCfgResult.getRevisionInfoXmlMapping(), revInfoCfgResult.getRevisionInfoRelationMapping()
-		);
-		
+		auditStrategy = initializeAuditStrategy( revInfoCfgResult.getRevisionInfoClass(), revInfoCfgResult.getRevisionInfoTimestampData() );
+		entCfg = new EntitiesConfigurator().configure( cfg, reflectionManager, globalCfg, auditEntCfg, auditStrategy,
+				revInfoCfgResult.getRevisionInfoXmlMapping(), revInfoCfgResult.getRevisionInfoRelationMapping() );
+
 		Thread.currentThread().setContextClassLoader( tccl );
 	}
 
@@ -144,13 +145,10 @@ public class AuditConfiguration {
 				}
 			}
 
-			strategy = (AuditStrategy) ReflectHelper.getDefaultConstructor(auditStrategyClass).newInstance();
+			strategy = (AuditStrategy) ReflectHelper.getDefaultConstructor( auditStrategyClass ).newInstance();
 		}
-		catch ( Exception e ) {
-			throw new MappingException(
-					String.format( "Unable to create AuditStrategy[%s] instance.", auditEntCfg.getAuditStrategyName() ),
-					e
-			);
+		catch (Exception e) {
+			throw new MappingException( String.format( "Unable to create AuditStrategy[%s] instance.", auditEntCfg.getAuditStrategyName() ), e );
 		}
 
 		if ( strategy instanceof ValidityAuditStrategy ) {
@@ -164,8 +162,7 @@ public class AuditConfiguration {
 
 	//
 
-	private static Map<Configuration, AuditConfiguration> cfgs
-			= new WeakHashMap<Configuration, AuditConfiguration>();
+	private static Map<Configuration, AuditConfiguration> cfgs = new WeakHashMap<Configuration, AuditConfiguration>();
 
 	public synchronized static AuditConfiguration getFor(Configuration cfg) {
 		return getFor( cfg, null );
@@ -186,8 +183,7 @@ public class AuditConfiguration {
 
 	public void destroy() {
 		synchronized ( AuditConfiguration.class ) {
-			for ( Map.Entry<Configuration, AuditConfiguration> c : new HashSet<Map.Entry<Configuration, AuditConfiguration>>(
-					cfgs.entrySet() ) ) {
+			for ( Map.Entry<Configuration, AuditConfiguration> c : new HashSet<Map.Entry<Configuration, AuditConfiguration>>( cfgs.entrySet() ) ) {
 				if ( c.getValue() == this ) { // this is nasty cleanup fix, whole static CFGS should be reworked
 					cfgs.remove( c.getKey() );
 				}

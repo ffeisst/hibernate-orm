@@ -22,10 +22,12 @@
  * Boston, MA  02110-1301  USA
  */
 package org.hibernate.envers.tools.reflection;
+
 import static org.hibernate.envers.tools.Pair.make;
 
 import java.util.Map;
 
+import org.hibernate.envers.configuration.AuditConfiguration;
 import org.hibernate.envers.entities.PropertyData;
 import org.hibernate.envers.tools.Pair;
 import org.hibernate.internal.util.collections.ConcurrentReferenceHashMap;
@@ -33,53 +35,78 @@ import org.hibernate.property.Getter;
 import org.hibernate.property.PropertyAccessor;
 import org.hibernate.property.PropertyAccessorFactory;
 import org.hibernate.property.Setter;
+import org.hibernate.service.classloading.spi.ClassLoaderService;
+import org.hibernate.service.classloading.spi.ClassLoadingException;
 
 /**
  * @author Adam Warski (adam at warski dot org)
+ * @author Felix Feisst (feisst at patronas dot de)
  */
 public class ReflectionTools {
-    private static final Map<Pair<Class, String>, Getter> getterCache =
-            new ConcurrentReferenceHashMap<Pair<Class, String>, Getter>(10,
-                ConcurrentReferenceHashMap.ReferenceType.SOFT,
-                ConcurrentReferenceHashMap.ReferenceType.SOFT);
-    private static final Map<Pair<Class, String>, Setter> setterCache =
-            new ConcurrentReferenceHashMap<Pair<Class, String>, Setter>(10,
-                ConcurrentReferenceHashMap.ReferenceType.SOFT,
-                ConcurrentReferenceHashMap.ReferenceType.SOFT);
 
-    private static PropertyAccessor getAccessor(String accessorType) {
-        return PropertyAccessorFactory.getPropertyAccessor(accessorType);
-    }
+	private static final Map<Pair<Class, String>, Getter> getterCache = new ConcurrentReferenceHashMap<Pair<Class, String>, Getter>( 10,
+			ConcurrentReferenceHashMap.ReferenceType.SOFT, ConcurrentReferenceHashMap.ReferenceType.SOFT );
+	private static final Map<Pair<Class, String>, Setter> setterCache = new ConcurrentReferenceHashMap<Pair<Class, String>, Setter>( 10,
+			ConcurrentReferenceHashMap.ReferenceType.SOFT, ConcurrentReferenceHashMap.ReferenceType.SOFT );
 
-    public static Getter getGetter(Class cls, PropertyData propertyData) {
-        return getGetter(cls, propertyData.getBeanName(), propertyData.getAccessType());
-    }
+	private static PropertyAccessor getAccessor(String accessorType) {
+		return PropertyAccessorFactory.getPropertyAccessor( accessorType );
+	}
 
-    public static Getter getGetter(Class cls, String propertyName, String accessorType) {
-        Pair<Class, String> key = make(cls, propertyName);
-        Getter value = getterCache.get(key);
-        if (value == null) {
-            value = getAccessor(accessorType).getGetter(cls, propertyName);
-            // It's ok if two getters are generated concurrently
-            getterCache.put(key, value);
-        }
+	public static Getter getGetter(Class cls, PropertyData propertyData) {
+		return getGetter( cls, propertyData.getBeanName(), propertyData.getAccessType() );
+	}
 
-        return value;
-    }
+	public static Getter getGetter(Class cls, String propertyName, String accessorType) {
+		Pair<Class, String> key = make( cls, propertyName );
+		Getter value = getterCache.get( key );
+		if ( value == null ) {
+			value = getAccessor( accessorType ).getGetter( cls, propertyName );
+			// It's ok if two getters are generated concurrently
+			getterCache.put( key, value );
+		}
 
-    public static Setter getSetter(Class cls, PropertyData propertyData) {
-        return getSetter(cls, propertyData.getBeanName(), propertyData.getAccessType());
-    }
+		return value;
+	}
 
-    private static Setter getSetter(Class cls, String propertyName, String accessorType) {
-        Pair<Class, String> key = make(cls, propertyName);
-        Setter value = setterCache.get(key);
-        if (value == null) {
-            value = getAccessor(accessorType).getSetter(cls, propertyName);
-            // It's ok if two setters are generated concurrently
-            setterCache.put(key, value);
-        }
+	public static Setter getSetter(Class cls, PropertyData propertyData) {
+		return getSetter( cls, propertyData.getBeanName(), propertyData.getAccessType() );
+	}
 
-        return value;
-    }
+	public static Setter getSetter(Class cls, String propertyName, String accessorType) {
+		Pair<Class, String> key = make( cls, propertyName );
+		Setter value = setterCache.get( key );
+		if ( value == null ) {
+			value = getAccessor( accessorType ).getSetter( cls, propertyName );
+			// It's ok if two setters are generated concurrently
+			setterCache.put( key, value );
+		}
+
+		return value;
+	}
+
+	/**
+	 * Locate class with a given name.
+	 * 
+	 * @param name Fully qualified class name.
+	 * @param classLoaderService Class loading service. Passing {@code null} reference in case of
+	 * {@link AuditConfiguration#getFor(Configuration)} usage.
+	 * @return The cass reference.
+	 * @throws ClassLoadingException Indicates the class could not be found.
+	 */
+	@SuppressWarnings("unchecked")
+	public static <T> Class<T> loadClass(String name, ClassLoaderService classLoaderService) throws ClassLoadingException {
+		try {
+			if ( classLoaderService != null ) {
+				return classLoaderService.classForName( name );
+			}
+			else {
+				return (Class<T>) Thread.currentThread().getContextClassLoader().loadClass( name );
+			}
+		}
+		catch (Exception e) {
+			throw new ClassLoadingException( "Unable to load class [" + name + "]", e );
+		}
+	}
+
 }

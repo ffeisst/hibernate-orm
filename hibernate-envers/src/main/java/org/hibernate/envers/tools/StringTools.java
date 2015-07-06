@@ -22,56 +22,72 @@
  * Boston, MA  02110-1301  USA
  */
 package org.hibernate.envers.tools;
+
 import java.util.Iterator;
 
 /**
  * @author Adam Warski (adam at warski dot org)
+ * @author Lukasz Zuchowski (author at zuchos dot com)
+ * @author Felix Feisst (feisst at patronas dot de)
  */
 public class StringTools {
-    public static boolean isEmpty(String s) {
-        return s == null || "".equals(s);
-    }
 
-    public static boolean isEmpty(Object o) {
-        return o == null || "".equals(o);
-    }
+	public static boolean isEmpty(String s) {
+		return s == null || "".equals( s );
+	}
 
-    /**
-     * @param s String, from which to get the last component.
-     * @return The last component of the dot-separated string <code>s</code>. For example, for a string
-     * "a.b.c", the result is "c".
-     */
-    public static String getLastComponent(String s) {
-        if (s == null) {
-            return null;
-        }
+	public static boolean isEmpty(Object o) {
+		return o == null || "".equals( o );
+	}
 
-        int lastDot = s.lastIndexOf(".");
-        if (lastDot == -1) {
-            return s;
-        } else {
-            return s.substring(lastDot + 1);
-        }
-    }
+	/**
+	 * @param s String, from which to get the last component.
+	 * @return The last component of the dot-separated string <code>s</code>. For example, for a string "a.b.c", the
+	 * result is "c".
+	 */
+	public static String getLastComponent(String s) {
+		if ( s == null ) {
+			return null;
+		}
 
-    /**
-     * To the given string builder, appends all strings in the given iterator, separating them with the given
-     * separator. For example, for an interator "a" "b" "c" and separator ":" the output is "a:b:c".
-     * @param sb String builder, to which to append.
-     * @param contents Strings to be appended.
-     * @param separator Separator between subsequent content.
-     */
-    public static void append(StringBuilder sb, Iterator<String> contents, String separator) {
-        boolean isFirst = true;
+		int lastDot = s.lastIndexOf( "." );
+		if ( lastDot == -1 ) {
+			return s;
+		}
+		else {
+			return s.substring( lastDot + 1 );
+		}
+	}
 
-        while (contents.hasNext()) {
-            if (!isFirst) {
-                sb.append(separator);
-            }
+	/**
+	 * To the given string builder, appends all strings in the given iterator, separating them with the given separator.
+	 * For example, for an interator "a" "b" "c" and separator ":" the output is "a:b:c".
+	 * 
+	 * @param sb String builder, to which to append.
+	 * @param contents Strings to be appended.
+	 * @param separator Separator between subsequent content.
+	 */
+	public static void append(StringBuilder sb, Iterator<String> contents, String separator) {
+		boolean isFirst = true;
 
-            sb.append(contents.next());
-            
-            isFirst = false;
-        }
-    }
+		while ( contents.hasNext() ) {
+			if ( !isFirst ) {
+				sb.append( separator );
+			}
+
+			sb.append( contents.next() );
+
+			isFirst = false;
+		}
+	}
+
+	/**
+	 * Capitalizes first letter of the string
+	 * 
+	 * @param fieldName
+	 * @return capitalized string
+	 */
+	public static String capitalizeFirst(String fieldName) {
+		return fieldName.substring( 0, 1 ).toUpperCase() + fieldName.substring( 1 );
+	}
 }
